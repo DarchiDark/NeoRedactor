@@ -10,8 +10,21 @@ from os import path
 
 #Vars
 root = ctk.CTk()
+
 config = configparser.RawConfigParser()
 configreader = configparser.RawConfigParser()
+if(path.exists("config.ini") == False):
+        config.add_section('console')
+        config.set('console', 'linetxt', "Command Line /")
+        config.set('console', 'ipsftp', "127.0.0.1")
+        config.set('console', 'portsftp', "2222")
+        config.set('console', 'usersftp', "DefaultUser")
+        config.set('console', 'passwordsftp', "DefaultPassword")
+        config.set('console', 'passwordmcrcon', "DefaultPassword")
+        config.set('console', 'portmcrcon', "25566")
+        with open('./config.ini', 'w') as f:
+            config.write(f)
+
 configreader.read('config.ini')  # Read the config file
 
 # Load background image for MainMenu
@@ -31,17 +44,6 @@ bg_settings = ImageTk.PhotoImage(bg_settings)
 host = configreader.get('console', 'ipsftp')
 port = configreader.getint('console', 'portmcrcon')
 # Create Config if does not Exists
-if(path.exists("config.ini") == False):
-        config.add_section('console')
-        config.set('console', 'linetxt', "Command Line /")
-        config.set('console', 'ipsftp', "127.0.0.1")
-        config.set('console', 'portsftp', "2222")
-        config.set('console', 'usersftp', "DefaultUser")
-        config.set('console', 'passwordsftp', "DefaultPassword")
-        config.set('console', 'passwordmcrcon', "DefaultPassword")
-        config.set('console', 'portmcrcon', "25566")
-        with open('./config.ini', 'w') as f:
-            config.write(f)
 
 # Declare global variables
 ConsoleInput = None
@@ -56,7 +58,7 @@ def sendRcon(event=None):
     t = threading.Thread(target=send_rcon_command)
     t.start()
 
-def fetch_file_contents():
+def loadConsole():
     file_path = '/logs/latest.log'
     file_name = os.path.basename(file_path)
     
@@ -83,6 +85,35 @@ def fetch_file_contents():
     
     sftp.close()
     ssh.close()
+    
+    while True:
+        fetch_file_contents()
+        time.sleep(0.1)
+    
+    
+def fetch_file_contents():
+    file_path = '/logs/latest.log'
+    file_name = os.path.basename(file_path)
+    
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(hostname=configreader.get('console', 'ipsftp'), port=configreader.getint('console', 'portsftp'), username=configreader.get('console', 'usersftp'), password=configreader.get('console', 'passwordsftp'))
+    
+    sftp = ssh.open_sftp()
+    sftp.get(file_path, file_name)
+    
+    with open(file_name, 'r', encoding='utf-8') as f:
+        file_contents = f.read()
+    
+    existing_lines = text_widget.get("1.0", "end").split("\n")
+    new_lines = file_contents.split("\n")
+
+    if len(new_lines) > len(existing_lines):
+        added_lines = new_lines[len(existing_lines):]
+        text_widget.insert("1.0", "\n".join(added_lines) if added_lines else "")
+    
+    sftp.close()
+    ssh.close()
 
 def consoleUpdater():
     while True:
@@ -104,9 +135,9 @@ def consoleElements():
     ConsoleInput = ctk.CTkEntry(root, placeholder_text=ConsoleTxt, height=5, width=1180)
     ConsoleInput.place(x=5, y=690)
     ConsoleSendButton.place(x=1192, y=687)
-    update_thread = threading.Thread(target=consoleUpdater)
-    update_thread.daemon = True
-    update_thread.start()
+    loadconsole = threading.Thread(target=loadConsole)
+    loadconsole.daemon = True
+    loadconsole.start()
     text_widget.place(x=10, y=35)
     BackToMain.place(x=5, y=5)
 
@@ -132,7 +163,7 @@ def settingsElements():
     McRCONPortEntry.place(x=330, y=130)
     McRCONPasswordTXT.place(x=30, y=150)
     McRCONPasswordEntry.place(x=330, y=150)
-root.iconbitmap('D:\ServerModifer\icon.ico')
+root.iconbitmap('./icon.ico')
 root.resizable(0, 0)
 root.title('Neo Redactor')
 root.geometry("1280x720")
@@ -140,17 +171,25 @@ root.geometry("1280x720")
 def saveAndBack():
     if path.exists('config.ini'):
         config.read('config.ini')
-        config.set('console', 'linetxt', CommandLineEntry.get())
-        config.set('console', 'ipsftp', SFtpIpEntry.get())
-        config.set('console', 'portsftp', SFtpPortEntry.get())
-        config.set('console', 'usersftp', SFtpUserEntry.get())
-        config.set('console', 'passwordsftp', SFtpPasswordEntry.get())
-        config.set('console', 'passwordmcrcon', McRCONPasswordEntry.get())
-        config.set('console', 'portmcrcon', McRCONPortEntry.get())
+
+        def update_config(key, entry):
+            value = entry.get().strip()
+            if value:  
+                config.set('console', key, value)
+
+        update_config('linetxt', CommandLineEntry)
+        update_config('ipsftp', SFtpIpEntry)
+        update_config('portsftp', SFtpPortEntry)
+        update_config('usersftp', SFtpUserEntry)
+        update_config('passwordsftp', SFtpPasswordEntry)
+        update_config('passwordmcrcon', McRCONPasswordEntry)
+        update_config('portmcrcon', McRCONPortEntry)
+
         with open('./config.ini', 'w') as f:
             config.write(f)
     else:
         print("ERROR: NO CONFIG!")
+
     CommandLineTXT.place_forget()
     CommandLineEntry.place_forget()
     BackGroundS.place_forget()
@@ -171,6 +210,7 @@ def saveAndBack():
     ServerSetFrame.place(x=0, y=670)
     ConsoleButton.place(x=400, y=678)
     SettingsButton.place(x=710, y=678)
+
 
 def goToMain(): 
     global ConsoleInput
@@ -198,7 +238,7 @@ SettingsButton.place(x=710, y=678)
 
 #ConsoleMenu
 BackGroundC = ctk.CTkLabel(root, text='', image=bg_console_ctk, width=5, height=5)
-ConsoleSendButton = ctk.CTkButton(root, width=10, height=5, text="Отправить", text_color="#5e0099",font=("Pobeda", 20), fg_color="#9500f2", hover_color="#8100d1", command=sendRcon)
+ConsoleSendButton = ctk.CTkButton(root, width=10, height=15, text="Send CMD", text_color="#5e0099",font=("Pobeda", 20), fg_color="#9500f2", hover_color="#8100d1", command=sendRcon)
 text_widget = ctk.CTkTextbox(root, width=1260, height=640)
 BackToMain = ctk.CTkButton(root, fg_color="#710de0", hover_color="#690ec9", text="Back", text_color="#3d067a",font=("Berlin Sans FB Demi", 20), command=goToMain)
 
